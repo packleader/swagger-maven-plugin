@@ -161,12 +161,12 @@ public abstract class AbstractDocumentSource {
         if (apiSource.isUseJAXBAnnotationProcessor()) {
             JaxbAnnotationModule jaxbAnnotationModule = new JaxbAnnotationModule();
             if (apiSource.isUseJAXBAnnotationProcessorAsPrimary()) {
-                jaxbAnnotationModule.setPriority(Priority.PRIMARY);    
+                jaxbAnnotationModule.setPriority(Priority.PRIMARY);
             } else {
                 jaxbAnnotationModule.setPriority(Priority.SECONDARY);
             }
             objectMapper.registerModule(jaxbAnnotationModule);
-            
+
             // to support @ApiModel on class level.
             // must be registered only if we use JaxbAnnotationModule before. Why?
             objectMapper.registerModule(new EnhancedSwaggerModule());
@@ -245,22 +245,8 @@ public abstract class AbstractDocumentSource {
         }
     }
 
-    private void writeInDirectory(File dir, Swagger swaggerDoc,
-                                  String basePath) throws GenerateException {
-
-//		try {
-//			File serviceFile = createFile(dir, filename);
-//			String json = JsonSerializer.asJson(swaggerDoc);
-//			JsonNode tree = mapper.readTree(json);
-//			if (basePath != null) {
-//				((ObjectNode) tree).put("basePath", basePath);
-//			}
-//
-//			JsonUtil.mapper().writerWithDefaultPrettyPrinter()
-//					.writeValue(serviceFile, tree);
-//		} catch (IOException e) {
-//			throw new GenerateException(e);
-//		}
+    public Swagger getSwaggerModel() {
+        return swagger;
     }
 
     protected File createFile(File dir, String outputResourcePath) throws IOException {
