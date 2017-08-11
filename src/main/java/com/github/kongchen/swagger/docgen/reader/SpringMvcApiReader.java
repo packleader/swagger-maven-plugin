@@ -88,7 +88,7 @@ public class SpringMvcApiReader extends AbstractReader implements ClassSwaggerRe
                 return swagger;
             }
             tags = updateTagsForApi(null, api);
-            resourceSecurities = getSecurityRequirements(api);
+            resourceSecurities = swaggerAnnotationHelper.getSecurityRequirements(api);
         }
 
         resourcePath = resource.getControllerMapping();

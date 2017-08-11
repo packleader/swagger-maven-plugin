@@ -81,6 +81,7 @@ public class SpringMavenDocumentSource extends AbstractDocumentSource {
         if (customReaderClassName == null) {
             SpringMvcApiReader reader = new SpringMvcApiReader(swagger, LOG);
             reader.setTypesToSkip(this.typesToSkip);
+            reader.setSwaggerAnnotationHelper(swaggerAnnotationHelper);
             return reader;
         } else {
             return getCustomApiReader(customReaderClassName);

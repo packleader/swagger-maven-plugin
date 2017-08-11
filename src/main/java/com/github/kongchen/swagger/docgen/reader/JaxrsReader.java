@@ -1,6 +1,11 @@
 package com.github.kongchen.swagger.docgen.reader;
 
-import io.swagger.annotations.*;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiResponses;
+import io.swagger.annotations.Authorization;
+import io.swagger.annotations.AuthorizationScope;
+import io.swagger.annotations.SwaggerDefinition;
 import io.swagger.converter.ModelConverters;
 import io.swagger.jaxrs.ext.SwaggerExtension;
 import io.swagger.jaxrs.ext.SwaggerExtensions;
@@ -64,7 +69,7 @@ public class JaxrsReader extends AbstractReader implements ClassSwaggerReader {
         }
 
         Map<String, Tag> tags = updateTagsForApi(parentTags, api);
-        List<SecurityRequirement> securities = getSecurityRequirements(api);
+        List<SecurityRequirement> securities = swaggerAnnotationHelper.getSecurityRequirements(api);
 
         // merge consumes, pro duces
 

@@ -17,6 +17,7 @@ import com.github.kongchen.swagger.docgen.mavenplugin.ApiSource;
 import com.github.kongchen.swagger.docgen.reader.AbstractReader;
 import com.github.kongchen.swagger.docgen.reader.ClassSwaggerReader;
 import com.github.kongchen.swagger.docgen.reader.ModelModifier;
+import com.github.kongchen.swagger.docgen.reader.SwaggerAnnotationHelper;
 import io.swagger.converter.ModelConverter;
 import io.swagger.converter.ModelConverters;
 import io.swagger.models.Scheme;
@@ -56,6 +57,11 @@ public abstract class AbstractDocumentSource {
     private ObjectMapper mapper = new ObjectMapper();
     private boolean isSorted = false;
     protected String encoding = "UTF-8";
+    protected SwaggerAnnotationHelper swaggerAnnotationHelper = new SwaggerAnnotationHelper();
+
+    public void setSwaggerAnnotationHelper(SwaggerAnnotationHelper swaggerAnnotationHelper) {
+        this.swaggerAnnotationHelper = swaggerAnnotationHelper;
+    }
 
     public AbstractDocumentSource(Log log, ApiSource apiSource) throws MojoFailureException {
         LOG = log;
@@ -348,7 +354,9 @@ public abstract class AbstractDocumentSource {
             Class<?> clazz = Class.forName(customReaderClassName);
             if (AbstractReader.class.isAssignableFrom(clazz)) {
                 Constructor<?> constructor = clazz.getConstructor(Swagger.class, Log.class);
-                return (ClassSwaggerReader) constructor.newInstance(swagger, LOG);
+                AbstractReader reader = (AbstractReader) constructor.newInstance(swagger, LOG);
+                reader.setSwaggerAnnotationHelper(swaggerAnnotationHelper);
+                return (ClassSwaggerReader) reader;
             } else {
                 return (ClassSwaggerReader) clazz.newInstance();
             }

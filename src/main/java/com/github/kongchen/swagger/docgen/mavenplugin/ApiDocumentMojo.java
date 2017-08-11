@@ -3,6 +3,7 @@ package com.github.kongchen.swagger.docgen.mavenplugin;
 import com.github.kongchen.swagger.docgen.AbstractDocumentSource;
 import com.github.kongchen.swagger.docgen.GenerateException;
 
+import com.github.kongchen.swagger.docgen.reader.RapidSwaggerAnnotationHelper;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;

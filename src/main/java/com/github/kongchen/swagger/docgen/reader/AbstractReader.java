@@ -11,8 +11,6 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
 import io.swagger.annotations.ApiResponse;
 import io.swagger.annotations.ApiResponses;
-import io.swagger.annotations.Authorization;
-import io.swagger.annotations.AuthorizationScope;
 import io.swagger.annotations.Extension;
 import io.swagger.annotations.ExtensionProperty;
 import io.swagger.annotations.ResponseHeader;
@@ -28,7 +26,6 @@ import io.swagger.models.Scheme;
 import io.swagger.models.SecurityRequirement;
 import io.swagger.models.Swagger;
 import io.swagger.models.Tag;
-import io.swagger.models.parameters.AbstractSerializableParameter;
 import io.swagger.models.parameters.BodyParameter;
 import io.swagger.models.parameters.FormParameter;
 import io.swagger.models.parameters.HeaderParameter;
@@ -56,7 +53,6 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -73,6 +69,11 @@ public abstract class AbstractReader {
     protected final Log LOG;
     protected Swagger swagger;
     private Set<Type> typesToSkip = new HashSet<Type>();
+    protected SwaggerAnnotationHelper swaggerAnnotationHelper;
+
+    public void setSwaggerAnnotationHelper(SwaggerAnnotationHelper swaggerAnnotationHelper) {
+        this.swaggerAnnotationHelper = swaggerAnnotationHelper;
+    }
 
     public Set<Type> getTypesToSkip() {
         return typesToSkip;
@@ -107,24 +108,6 @@ public abstract class AbstractReader {
             extensions.add(new JaxrsParameterExtension());
         }
         SwaggerExtensions.setExtensions(extensions);
-    }
-
-    protected List<SecurityRequirement> getSecurityRequirements(Api api) {
-        List<SecurityRequirement> securities = new ArrayList<SecurityRequirement>();
-        for (Authorization auth : api.authorizations()) {
-            if (auth.value().isEmpty()) {
-                continue;
-            }
-            SecurityRequirement security = new SecurityRequirement();
-            security.setName(auth.value());
-            for (AuthorizationScope scope : auth.scopes()) {
-                if (!scope.scope().isEmpty()) {
-                    security.addScope(scope.scope());
-                }
-            }
-            securities.add(security);
-        }
-        return securities;
     }
 
     protected String parseOperationPath(String operationPath, Map<String, String> regexMap) {
@@ -232,31 +215,7 @@ public abstract class AbstractReader {
     }
 
     protected boolean canReadApi(boolean readHidden, Api api) {
-        return (api != null && readHidden) || (api != null && !api.hidden());
-    }
-
-    protected Set<Tag> extractTags(Api api) {
-        Set<Tag> output = new LinkedHashSet<Tag>();
-
-        boolean hasExplicitTags = false;
-        for (String tag : api.tags()) {
-            if (!tag.isEmpty()) {
-                hasExplicitTags = true;
-                output.add(new Tag().name(tag));
-            }
-        }
-        if (!hasExplicitTags) {
-            // derive tag from api path + description
-            String tagString = api.value().replace("/", "");
-            if (!tagString.isEmpty()) {
-                Tag tag = new Tag().name(tagString);
-                if (!api.description().isEmpty()) {
-                    tag.description(api.description());
-                }
-                output.add(tag);
-            }
-        }
-        return output;
+        return (api != null) && (readHidden || !swaggerAnnotationHelper.isHidden(api));
     }
 
     protected void updateOperationProtocols(ApiOperation apiOperation, Operation operation) {
@@ -272,7 +231,7 @@ public abstract class AbstractReader {
     protected Map<String, Tag> updateTagsForApi(Map<String, Tag> parentTags, Api api) {
         // the value will be used as a tag for 2.0 UNLESS a Tags annotation is present
         Map<String, Tag> tagsMap = new HashMap<String, Tag>();
-        for (Tag tag : extractTags(api)) {
+        for (Tag tag : swaggerAnnotationHelper.extractTags(api)) {
             tagsMap.put(tag.getName(), tag);
         }
         if (parentTags != null) {
