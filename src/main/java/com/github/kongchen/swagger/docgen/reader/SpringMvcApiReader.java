@@ -7,8 +7,6 @@ import com.github.kongchen.swagger.docgen.util.SpringUtils;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiResponses;
-import io.swagger.annotations.Authorization;
-import io.swagger.annotations.AuthorizationScope;
 import io.swagger.converter.ModelConverters;
 import io.swagger.models.Model;
 import io.swagger.models.Operation;
@@ -103,7 +101,7 @@ public class SpringMvcApiReader extends AbstractReader implements ClassSwaggerRe
                     continue;
                 }
                 ApiOperation apiOperation = AnnotatedElementUtils.findMergedAnnotation(method, ApiOperation.class);
-                if (apiOperation == null || apiOperation.hidden()) {
+                if (apiOperation == null || swaggerAnnotationHelper.isHidden(apiOperation)) {
                     continue;
                 }
 
@@ -141,26 +139,28 @@ public class SpringMvcApiReader extends AbstractReader implements ClassSwaggerRe
         Operation operation = new Operation();
 
         RequestMapping requestMapping = AnnotatedElementUtils.findMergedAnnotation(method, RequestMapping.class);
-        Type responseClass = null;
         List<String> produces = new ArrayList<String>();
         List<String> consumes = new ArrayList<String>();
         String responseContainer = null;
         String operationId = method.getName();
 
         ApiOperation apiOperation = AnnotatedElementUtils.findMergedAnnotation(method, ApiOperation.class);
+        int responseCode = swaggerAnnotationHelper.getResponseCode(apiOperation);
 
-        if (apiOperation.hidden()) {
+        if (swaggerAnnotationHelper.isHidden(apiOperation)) {
             return null;
         }
-        if (!apiOperation.nickname().isEmpty()) {
-            operationId = apiOperation.nickname();
+        String nickname = swaggerAnnotationHelper.getNickname(apiOperation);
+        if (!nickname.isEmpty()) {
+            operationId = nickname;
         }
 
-        Map<String, Property> defaultResponseHeaders = parseResponseHeaders(apiOperation.responseHeaders());
+        Map<String, Property> defaultResponseHeaders = parseResponseHeaders(swaggerAnnotationHelper.getResponseHeaders(apiOperation));
 
-        operation.summary(apiOperation.value()).description(apiOperation.notes());
+        swaggerAnnotationHelper.updateSummary(operation, apiOperation);
+        swaggerAnnotationHelper.updateDescription(operation, apiOperation);
 
-        Set<Map<String, Object>> customExtensions = parseCustomExtensions(apiOperation.extensions());
+        Set<Map<String, Object>> customExtensions = parseCustomExtensions(swaggerAnnotationHelper.getExtensions(apiOperation));
 
         for (Map<String, Object> extension : customExtensions) {
             if (extension == null) {
@@ -175,75 +175,56 @@ public class SpringMvcApiReader extends AbstractReader implements ClassSwaggerRe
             }
         }
 
-        if (!apiOperation.response().equals(Void.class)) {
-            responseClass = apiOperation.response();
-        }
-        if (!apiOperation.responseContainer().isEmpty()) {
-            responseContainer = apiOperation.responseContainer();
-        }
+        responseContainer = swaggerAnnotationHelper.getResponseContainer(method, apiOperation);
 
         ///security
-        List<SecurityRequirement> securities = new ArrayList<SecurityRequirement>();
-        for (Authorization auth : apiOperation.authorizations()) {
-            if (!auth.value().isEmpty()) {
-                SecurityRequirement security = new SecurityRequirement();
-                security.setName(auth.value());
-                for (AuthorizationScope scope : auth.scopes()) {
-                    if (!scope.scope().isEmpty()) {
-                        security.addScope(scope.scope());
-                    }
-                }
-                securities.add(security);
-            }
-        }
+        List<SecurityRequirement> securities = swaggerAnnotationHelper.extractSecurities(apiOperation);
+
         for (SecurityRequirement sec : securities) {
             operation.security(sec);
         }
 
-        if (responseClass == null) {
-            // pick out response from method declaration
-            LOG.info("picking up response class from method " + method);
-            responseClass = method.getGenericReturnType();
-        }
-        if (responseClass instanceof ParameterizedType && ResponseEntity.class.equals(((ParameterizedType) responseClass).getRawType())) {
-            responseClass = ((ParameterizedType) responseClass).getActualTypeArguments()[0];
+        Type responseClassType = swaggerAnnotationHelper.getResponseType(method, apiOperation);
+
+        if (responseClassType instanceof ParameterizedType && ResponseEntity.class.equals(((ParameterizedType) responseClassType).getRawType())) {
+            responseClassType = ((ParameterizedType) responseClassType).getActualTypeArguments()[0];
         }
         boolean hasApiAnnotation = false;
-        if (responseClass instanceof Class) {
-            hasApiAnnotation = AnnotationUtils.findAnnotation((Class) responseClass, Api.class) != null;
+        if (responseClassType instanceof Class) {
+            hasApiAnnotation = AnnotationUtils.findAnnotation((Class) responseClassType, Api.class) != null;
         }
-        if (responseClass != null
-                && !responseClass.equals(Void.class)
-                && !responseClass.equals(ResponseEntity.class)
+        if (responseClassType != null
+                && !responseClassType.equals(Void.class)
+                && !responseClassType.equals(ResponseEntity.class)
                 && !hasApiAnnotation) {
-            if (isPrimitive(responseClass)) {
-                Property property = ModelConverters.getInstance().readAsProperty(responseClass);
+            if (isPrimitive(responseClassType)) {
+                Property property = ModelConverters.getInstance().readAsProperty(responseClassType);
                 if (property != null) {
                     Property responseProperty = RESPONSE_CONTAINER_CONVERTER.withResponseContainer(responseContainer, property);
-                    operation.response(apiOperation.code(), new Response()
+                    operation.response(responseCode, new Response()
                             .description("successful operation")
                             .schema(responseProperty)
                             .headers(defaultResponseHeaders));
                 }
-            } else if (!responseClass.equals(Void.class) && !responseClass.equals(void.class)) {
-                Map<String, Model> models = ModelConverters.getInstance().read(responseClass);
+            } else if (!responseClassType.equals(Void.class) && !responseClassType.equals(void.class)) {
+                Map<String, Model> models = ModelConverters.getInstance().read(responseClassType);
                 if (models.isEmpty()) {
-                    Property pp = ModelConverters.getInstance().readAsProperty(responseClass);
-                    operation.response(apiOperation.code(), new Response()
+                    Property pp = ModelConverters.getInstance().readAsProperty(responseClassType);
+                    operation.response(responseCode, new Response()
                             .description("successful operation")
                             .schema(pp)
                             .headers(defaultResponseHeaders));
                 }
                 for (String key : models.keySet()) {
                     Property responseProperty = RESPONSE_CONTAINER_CONVERTER.withResponseContainer(responseContainer, new RefProperty().asDefault(key));
-                    operation.response(apiOperation.code(), new Response()
+                    operation.response(responseCode, new Response()
                             .description("successful operation")
                             .schema(responseProperty)
                             .headers(defaultResponseHeaders));
                     swagger.model(key, models.get(key));
                 }
             }
-            Map<String, Model> models = ModelConverters.getInstance().readAll(responseClass);
+            Map<String, Model> models = ModelConverters.getInstance().readAll(responseClassType);
             for (Map.Entry<String, Model> entry : models.entrySet()) {
                 swagger.model(entry.getKey(), entry.getValue());
             }
@@ -275,12 +256,6 @@ public class SpringMvcApiReader extends AbstractReader implements ClassSwaggerRe
         Deprecated annotation = AnnotationUtils.findAnnotation(method, Deprecated.class);
         if (annotation != null) {
             operation.deprecated(true);
-        }
-
-        // FIXME `hidden` is never used
-        boolean hidden = false;
-        if (apiOperation != null) {
-            hidden = apiOperation.hidden();
         }
 
         // process parameters

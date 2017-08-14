@@ -3,8 +3,6 @@ package com.github.kongchen.swagger.docgen.reader;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiResponses;
-import io.swagger.annotations.Authorization;
-import io.swagger.annotations.AuthorizationScope;
 import io.swagger.annotations.SwaggerDefinition;
 import io.swagger.converter.ModelConverters;
 import io.swagger.jaxrs.ext.SwaggerExtension;
@@ -80,7 +78,7 @@ public class JaxrsReader extends AbstractReader implements ClassSwaggerReader {
         // parse the method
         for (Method method : cls.getMethods()) {
             ApiOperation apiOperation = AnnotationUtils.findAnnotation(method, ApiOperation.class);
-            if (apiOperation == null || apiOperation.hidden()) {
+            if (apiOperation == null || swaggerAnnotationHelper.isHidden(apiOperation)) {
                 continue;
             }
             Path methodPath = AnnotationUtils.findAnnotation(method, Path.class);
@@ -203,25 +201,27 @@ public class JaxrsReader extends AbstractReader implements ClassSwaggerReader {
     public Operation parseMethod(Method method) {
         Operation operation = new Operation();
         ApiOperation apiOperation = AnnotationUtils.findAnnotation(method, ApiOperation.class);
+        int responseCode = swaggerAnnotationHelper.getResponseCode(apiOperation);
 
         String operationId = method.getName();
         String responseContainer = null;
 
-        Type responseClassType = null;
         Map<String, Property> defaultResponseHeaders = null;
 
         if (apiOperation != null) {
-            if (apiOperation.hidden()) {
+            if (swaggerAnnotationHelper.isHidden(apiOperation)) {
                 return null;
             }
-            if (!apiOperation.nickname().isEmpty()) {
-                operationId = apiOperation.nickname();
+            String nickname = swaggerAnnotationHelper.getNickname(apiOperation);
+            if (!nickname.isEmpty()) {
+                operationId = nickname;
             }
 
-            defaultResponseHeaders = parseResponseHeaders(apiOperation.responseHeaders());
-            operation.summary(apiOperation.value()).description(apiOperation.notes());
+            defaultResponseHeaders = parseResponseHeaders(swaggerAnnotationHelper.getResponseHeaders(apiOperation));
+            swaggerAnnotationHelper.updateSummary(operation, apiOperation);
+            swaggerAnnotationHelper.updateDescription(operation, apiOperation);
 
-            Set<Map<String, Object>> customExtensions = parseCustomExtensions(apiOperation.extensions());
+            Set<Map<String, Object>> customExtensions = parseCustomExtensions(swaggerAnnotationHelper.getExtensions(apiOperation));
             if (customExtensions != null) {
                 for (Map<String, Object> extension : customExtensions) {
                     if (extension == null) {
@@ -233,25 +233,9 @@ public class JaxrsReader extends AbstractReader implements ClassSwaggerReader {
                 }
             }
 
-            if (!apiOperation.response().equals(Void.class) && !apiOperation.response().equals(void.class)) {
-                responseClassType = apiOperation.response();
-            }
-            if (!apiOperation.responseContainer().isEmpty()) {
-                responseContainer = apiOperation.responseContainer();
-            }
-            List<SecurityRequirement> securities = new ArrayList<SecurityRequirement>();
-            for (Authorization auth : apiOperation.authorizations()) {
-                if (!auth.value().isEmpty()) {
-                    SecurityRequirement security = new SecurityRequirement();
-                    security.setName(auth.value());
-                    for (AuthorizationScope scope : auth.scopes()) {
-                        if (!scope.scope().isEmpty()) {
-                            security.addScope(scope.scope());
-                        }
-                    }
-                    securities.add(security);
-                }
-            }
+            responseContainer = swaggerAnnotationHelper.getResponseContainer(method, apiOperation);
+
+            List<SecurityRequirement> securities = swaggerAnnotationHelper.extractSecurities(apiOperation);
 
             for (SecurityRequirement sec : securities) {
                 operation.security(sec);
@@ -259,11 +243,8 @@ public class JaxrsReader extends AbstractReader implements ClassSwaggerReader {
         }
         operation.operationId(operationId);
 
-        if (responseClassType == null) {
-            // pick out response from method declaration
-            LOGGER.debug("picking up response class from method " + method);
-            responseClassType = method.getGenericReturnType();
-        }
+        Type responseClassType = swaggerAnnotationHelper.getResponseType(method, apiOperation);
+
         if ((responseClassType != null)
                 && !responseClassType.equals(Void.class)
                 && !responseClassType.equals(void.class)
@@ -274,7 +255,7 @@ public class JaxrsReader extends AbstractReader implements ClassSwaggerReader {
                 if (property != null) {
                     Property responseProperty = RESPONSE_CONTAINER_CONVERTER.withResponseContainer(responseContainer, property);
 
-                    operation.response(apiOperation.code(), new Response()
+                    operation.response(responseCode, new Response()
                             .description("successful operation")
                             .schema(responseProperty)
                             .headers(defaultResponseHeaders));
@@ -283,7 +264,7 @@ public class JaxrsReader extends AbstractReader implements ClassSwaggerReader {
                 Map<String, Model> models = ModelConverters.getInstance().read(responseClassType);
                 if (models.isEmpty()) {
                     Property p = ModelConverters.getInstance().readAsProperty(responseClassType);
-                    operation.response(apiOperation.code(), new Response()
+                    operation.response(responseCode, new Response()
                             .description("successful operation")
                             .schema(p)
                             .headers(defaultResponseHeaders));
@@ -292,7 +273,7 @@ public class JaxrsReader extends AbstractReader implements ClassSwaggerReader {
                     Property responseProperty = RESPONSE_CONTAINER_CONVERTER.withResponseContainer(responseContainer, new RefProperty().asDefault(key));
 
 
-                    operation.response(apiOperation.code(), new Response()
+                    operation.response(responseCode, new Response()
                             .description("successful operation")
                             .schema(responseProperty)
                             .headers(defaultResponseHeaders));
@@ -326,12 +307,6 @@ public class JaxrsReader extends AbstractReader implements ClassSwaggerReader {
 
         if (AnnotationUtils.findAnnotation(method, Deprecated.class) != null) {
             operation.deprecated(true);
-        }
-
-        // FIXME `hidden` is never used
-        boolean hidden = false;
-        if (apiOperation != null) {
-            hidden = apiOperation.hidden();
         }
 
         // process parameters
@@ -415,8 +390,9 @@ public class JaxrsReader extends AbstractReader implements ClassSwaggerReader {
 	}
 
 	public String extractOperationMethod(ApiOperation apiOperation, Method method, Iterator<SwaggerExtension> chain) {
-        if (!apiOperation.httpMethod().isEmpty()) {
-            return apiOperation.httpMethod().toLowerCase();
+        String apiOperationMethod = swaggerAnnotationHelper.getHttpMethod(apiOperation);
+        if (!apiOperationMethod.isEmpty()) {
+            return apiOperationMethod.toLowerCase();
         } else if (AnnotationUtils.findAnnotation(method, GET.class) != null) {
             return "get";
         } else if (AnnotationUtils.findAnnotation(method, PUT.class) != null) {

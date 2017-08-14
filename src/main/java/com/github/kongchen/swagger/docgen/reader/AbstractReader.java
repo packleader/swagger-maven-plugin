@@ -129,65 +129,11 @@ public abstract class AbstractReader {
     }
 
     protected Map<String, Property> parseResponseHeaders(ResponseHeader[] headers) {
-        if (headers == null) {
-            return null;
-        }
-        Map<String, Property> responseHeaders = null;
-        for (ResponseHeader header : headers) {
-            if (header.name().isEmpty()) {
-                continue;
-            }
-            if (responseHeaders == null) {
-                responseHeaders = new HashMap<String, Property>();
-            }
-            Class<?> cls = header.response();
-
-            if (!cls.equals(Void.class) && !cls.equals(void.class)) {
-                Property property = ModelConverters.getInstance().readAsProperty(cls);
-                if (property != null) {
-                    Property responseProperty;
-
-                    if (header.responseContainer().equalsIgnoreCase("list")) {
-                        responseProperty = new ArrayProperty(property);
-                    } else if (header.responseContainer().equalsIgnoreCase("map")) {
-                        responseProperty = new MapProperty(property);
-                    } else {
-                        responseProperty = property;
-                    }
-                    responseProperty.setDescription(header.description());
-                    responseHeaders.put(header.name(), responseProperty);
-                }
-            }
-        }
-        return responseHeaders;
+        return swaggerAnnotationHelper.parseResponseHeaders(headers);
     }
 
     protected Set<Map<String, Object>> parseCustomExtensions(Extension[] extensions) {
-        if (extensions == null) {
-            return Collections.emptySet();
-        }
-        Set<Map<String, Object>> resultSet = new HashSet<Map<String, Object>>();
-        for (Extension extension : extensions) {
-            if (extension == null) {
-                continue;
-            }
-            Map<String, Object> extensionProperties = new HashMap<String, Object>();
-            for (ExtensionProperty extensionProperty : extension.properties()) {
-                String name = extensionProperty.name();
-                if (!name.isEmpty()) {
-                    String value = extensionProperty.value();
-                    extensionProperties.put(name, value);
-                }
-            }
-            if (!extension.name().isEmpty()) {
-                Map<String, Object> wrapper = new HashMap<String, Object>();
-                wrapper.put(extension.name(), extensionProperties);
-                resultSet.add(wrapper);
-            } else {
-                resultSet.add(extensionProperties);
-            }
-        }
-        return resultSet;
+        return swaggerAnnotationHelper.parseCustomExtensions(extensions);
     }
 
     protected void updatePath(String operationPath, String httpMethod, Operation operation) {
@@ -206,7 +152,7 @@ public abstract class AbstractReader {
         if (apiOperation == null) {
             return;
         }
-        for (String tag : apiOperation.tags()) {
+        for (String tag : swaggerAnnotationHelper.extractTags(apiOperation)) {
             if (!tag.isEmpty()) {
                 operation.tag(tag);
                 swagger.tag(new Tag().name(tag));
@@ -219,7 +165,7 @@ public abstract class AbstractReader {
     }
 
     protected void updateOperationProtocols(ApiOperation apiOperation, Operation operation) {
-        String[] protocols = apiOperation.protocols().split(",");
+        List<String> protocols = swaggerAnnotationHelper.extractProtocols(apiOperation);
         for (String protocol : protocols) {
             String trimmed = protocol.trim();
             if (!trimmed.isEmpty()) {
